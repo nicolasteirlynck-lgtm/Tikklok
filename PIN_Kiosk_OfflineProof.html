@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vrijwilligers PIN Kiosk (Offline Bestendig & Cloud Sync)</title>
+  <title>Vrijwilligers PIN Kiosk (Cloud Sync & Live PINs)</title>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
@@ -81,16 +81,13 @@
       <h2>Momenteel Aanwezig <span class="badge" id="activeCount">0</span></h2>
       <ul class="vol-list" id="activeList"></ul>
       <div class="actions">
+        <button class="btn-secondary" onclick="fetchVolunteersFromSheet(true)"> Vernieuw PINs</button>
         <button class="btn-secondary" onclick="configureScriptUrl()">Koppel Google Sheet</button>
-        <button class="btn-secondary" onclick="manageVols()">Beheer PINs</button>
       </div>
     </div>
   </div>
 
   <script>
-    // =========================================================================
-    // GOOGLE APPS SCRIPT WEBAPP URL:
-    // =========================================================================
     const HARDCODED_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhrpRXyinc4q-9SdSm4KYUHg_jGLVwU3unAJfy9CyG1Ja_aZuEVHqzPGlW70xYzCt_/exec";
 
     let googleAppScriptUrl = localStorage.getItem('kiosk_script_url') || HARDCODED_SCRIPT_URL;
@@ -100,23 +97,38 @@
       localStorage.setItem('kiosk_script_url', HARDCODED_SCRIPT_URL);
     }
 
-    // =========================================================================
-    // PAS HIER JE STANDAARD VRIJWILLIGERS EN PINS AAN:
-    // =========================================================================
+    // Fallback PIN-lijst voor als de allereerste verbinding met Sheets zou mislukken
     let defaultVols = {
-      "1111": "Nicolas Teirlynck",
-      "2222": "Wim Vaes",
-      "3333": "Wolf Raman",
-      "3456": "Eline Claes",
-      "7890": "Tom De Smet"
+      "1234": "Jan Peeters",
+      "5678": "Sophie Willems"
     };
 
-    // 'kiosk_vols_v2' dwingt de browser om de nieuwe standaardlijst op te halen:
-    let volunteers = JSON.parse(localStorage.getItem('kiosk_vols_v2') || JSON.stringify(defaultVols));
+    let volunteers = JSON.parse(localStorage.getItem('kiosk_vols_live') || JSON.stringify(defaultVols));
     let activeSessions = JSON.parse(localStorage.getItem('kiosk_active') || '{}');
     let logs = JSON.parse(localStorage.getItem('kiosk_logs') || '[]');
     let offlineQueue = JSON.parse(localStorage.getItem('kiosk_offline_queue') || '[]');
     let currentPin = "";
+
+    // PIN-codes en namen live ophalen uit het Google Sheet tabblad "Vrijwilligers"
+    async function fetchVolunteersFromSheet(showNotification = false) {
+      if (!googleAppScriptUrl || !navigator.onLine) return;
+
+      try {
+        const response = await fetch(googleAppScriptUrl);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Object.keys(data).length > 0) {
+            volunteers = data;
+            localStorage.setItem('kiosk_vols_live', JSON.stringify(volunteers));
+            if (showNotification) {
+              showStatus("PIN-lijst succesvol vernieuwd uit Google Sheet!", true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Fout bij ophalen vrijwilligers uit Google Sheet:", err);
+      }
+    }
 
     function updateSyncBadge() {
       const dot = document.getElementById('statusDot');
@@ -268,29 +280,23 @@
       if (url !== null) {
         googleAppScriptUrl = url.trim();
         localStorage.setItem('kiosk_script_url', googleAppScriptUrl);
+        fetchVolunteersFromSheet(true);
         processQueue();
       }
     }
 
-    function manageVols() {
-      const pass = prompt("Wachtwoord (1234):");
-      if (pass !== "1234") return;
-      let text = "PIN: Naam\n";
-      for (let p in volunteers) text += `${p}: ${volunteers[p]}\n`;
-      const res = prompt(text + "\nVoer in als PIN:Naam (bijv. 4321:An Jansen):");
-      if (res && res.includes(":")) {
-        const parts = res.split(":");
-        volunteers[parts[0].trim()] = parts[1].trim();
-        localStorage.setItem('kiosk_vols_v2', JSON.stringify(volunteers));
-        alert("Opgeslagen!");
-      }
-    }
+    window.addEventListener('online', () => {
+      fetchVolunteersFromSheet();
+      processQueue();
+    });
 
-    window.addEventListener('online', processQueue);
+    // Haal elke 5 minuten automatisch eventuele nieuwe PINs op
+    setInterval(fetchVolunteersFromSheet, 300000);
     setInterval(processQueue, 15000);
 
     renderActiveList();
     updateSyncBadge();
+    fetchVolunteersFromSheet();
     processQueue();
   </script>
 </body>
