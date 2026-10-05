@@ -88,7 +88,19 @@
   </div>
 
   <script>
-    let googleAppScriptUrl = localStorage.getItem('kiosk_script_url') || "";
+    // =========================================================================
+    // GOOGLE APPS SCRIPT WEBAPP URL:
+    // =========================================================================
+    const HARDCODED_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhrpRXyinc4q-9SdSm4KYUHg_jGLVwU3unAJfy9CyG1Ja_aZuEVHqzPGlW70xYzCt_/exec";
+
+    // Haal URL op uit opslag of gebruik de vastgelegde URL hierboven
+    let googleAppScriptUrl = localStorage.getItem('kiosk_script_url') || HARDCODED_SCRIPT_URL;
+
+    // Zorg dat de geüpdatete URL altijd actief is in de browser
+    if (HARDCODED_SCRIPT_URL) {
+      googleAppScriptUrl = HARDCODED_SCRIPT_URL;
+      localStorage.setItem('kiosk_script_url', HARDCODED_SCRIPT_URL);
+    }
 
     let defaultVols = {
       "1234": "Jan Peeters",
