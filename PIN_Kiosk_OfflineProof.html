@@ -93,24 +93,26 @@
     // =========================================================================
     const HARDCODED_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhrpRXyinc4q-9SdSm4KYUHg_jGLVwU3unAJfy9CyG1Ja_aZuEVHqzPGlW70xYzCt_/exec";
 
-    // Haal URL op uit opslag of gebruik de vastgelegde URL hierboven
     let googleAppScriptUrl = localStorage.getItem('kiosk_script_url') || HARDCODED_SCRIPT_URL;
 
-    // Zorg dat de geüpdatete URL altijd actief is in de browser
     if (HARDCODED_SCRIPT_URL) {
       googleAppScriptUrl = HARDCODED_SCRIPT_URL;
       localStorage.setItem('kiosk_script_url', HARDCODED_SCRIPT_URL);
     }
 
+    // =========================================================================
+    // PAS HIER JE STANDAARD VRIJWILLIGERS EN PINS AAN:
+    // =========================================================================
     let defaultVols = {
-      "1111": "Wim Vaes",
-      "2222": "Nicolas Teirynck",
+      "1111": "Nicolas Teirlynck",
+      "2222": "Wim Vaes",
       "3333": "Wolf Raman",
-      "4444": "Jasper Persoons",
-      "5555": "Laurence Delbeke"
+      "3456": "Eline Claes",
+      "7890": "Tom De Smet"
     };
 
-    let volunteers = JSON.parse(localStorage.getItem('kiosk_vols') || JSON.stringify(defaultVols));
+    // 'kiosk_vols_v2' dwingt de browser om de nieuwe standaardlijst op te halen:
+    let volunteers = JSON.parse(localStorage.getItem('kiosk_vols_v2') || JSON.stringify(defaultVols));
     let activeSessions = JSON.parse(localStorage.getItem('kiosk_active') || '{}');
     let logs = JSON.parse(localStorage.getItem('kiosk_logs') || '[]');
     let offlineQueue = JSON.parse(localStorage.getItem('kiosk_offline_queue') || '[]');
@@ -152,7 +154,6 @@
       setTimeout(() => { box.style.display = 'none'; }, 4000);
     }
 
-    // Wachtrij-gebaseerd doorsturen (werkt ook na uitval!)
     async function queueAndSend(data) {
       offlineQueue.push(data);
       localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
@@ -175,13 +176,12 @@
             body: JSON.stringify(item)
           });
           
-          // Verwijder succesvol verzonden item
           offlineQueue.shift();
           localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
           updateSyncBadge();
         } catch (err) {
           console.error("Netwerkfout bij synchroniseren, pauzeer wachtrij:", err);
-          break; // Stop en probeer later opnieuw
+          break;
         }
       }
       updateSyncBadge();
@@ -233,7 +233,6 @@
         showStatus(`Welkom ${name}! Ingecheckt om ${timeStr}.`, true);
       }
 
-      // Opslaan op tablet + toevoegen aan verzend-wachtrij
       localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
       localStorage.setItem('kiosk_logs', JSON.stringify(logs));
       queueAndSend(payload);
@@ -282,14 +281,13 @@
       if (res && res.includes(":")) {
         const parts = res.split(":");
         volunteers[parts[0].trim()] = parts[1].trim();
-        localStorage.setItem('kiosk_vols', JSON.stringify(volunteers));
+        localStorage.setItem('kiosk_vols_v2', JSON.stringify(volunteers));
         alert("Opgeslagen!");
       }
     }
 
-    // Automatisch proberen de wachtrij te leegmaken zodra de browser weer online is
     window.addEventListener('online', processQueue);
-    setInterval(processQueue, 15000); // Controleer elke 15 seconden
+    setInterval(processQueue, 15000);
 
     renderActiveList();
     updateSyncBadge();
