@@ -72,7 +72,7 @@
         <button class="btn-num btn-clear" onclick="clearPin()">C</button>
         <button class="btn-num" onclick="press('0')">0</button>
         <button class="btn-num btn-clear" onclick="backspace()">⌫</button>
-        <button class="btn-num btn-enter" onclick="submitPin()">BEVESTIGEN</button>
+        <button class="btn-num btn-enter" id="btnSubmit" onclick="submitPin()">BEVESTIGEN</button>
       </div>
       <div id="statusBox" class="status-box"></div>
     </div>
@@ -107,6 +107,7 @@
     let logs = JSON.parse(localStorage.getItem('kiosk_logs') || '[]');
     let offlineQueue = JSON.parse(localStorage.getItem('kiosk_offline_queue') || '[]');
     let currentPin = "";
+    let isSubmitting = false; // Beveiliging tegen dubbel klikken/triggers
 
     async function fetchVolunteersFromSheet(showNotification = false) {
       if (!googleAppScriptUrl || !navigator.onLine) return;
@@ -198,12 +199,15 @@
     }
 
     function submitPin() {
-      if (!currentPin) return;
+      // Voorkom dat de functie 2x achter elkaar getriggerd wordt
+      if (isSubmitting || !currentPin) return;
+      isSubmitting = true;
 
       const name = volunteers[currentPin];
       if (!name) {
         showStatus("Onbekende PIN-code. Probeer opnieuw.", false);
         clearPin();
+        isSubmitting = false;
         return;
       }
 
@@ -246,11 +250,15 @@
       localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
       localStorage.setItem('kiosk_logs', JSON.stringify(logs));
       
-      // Enkel dít specifieke signaal (één rij) versturen naar Google Sheets
       queueAndSend(payload);
 
       clearPin();
       renderActiveList();
+
+      // Debounce opheffen na 1.5 seconde
+      setTimeout(() => {
+        isSubmitting = false;
+      }, 1500);
     }
 
     function renderActiveList() {
