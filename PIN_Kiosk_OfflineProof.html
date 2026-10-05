@@ -81,7 +81,7 @@
       <h2>Momenteel Aanwezig <span class="badge" id="activeCount">0</span></h2>
       <ul class="vol-list" id="activeList"></ul>
       <div class="actions">
-        <button class="btn-secondary" onclick="fetchVolunteersFromSheet(true)"> Vernieuw PINs</button>
+        <button class="btn-secondary" onclick="fetchVolunteersFromSheet(true)">Vernieuw PINs</button>
         <button class="btn-secondary" onclick="configureScriptUrl()">Koppel Google Sheet</button>
       </div>
     </div>
@@ -97,7 +97,6 @@
       localStorage.setItem('kiosk_script_url', HARDCODED_SCRIPT_URL);
     }
 
-    // Fallback PIN-lijst voor als de allereerste verbinding met Sheets zou mislukken
     let defaultVols = {
       "1234": "Jan Peeters",
       "5678": "Sophie Willems"
@@ -109,7 +108,6 @@
     let offlineQueue = JSON.parse(localStorage.getItem('kiosk_offline_queue') || '[]');
     let currentPin = "";
 
-    // PIN-codes en namen live ophalen uit het Google Sheet tabblad "Vrijwilligers"
     async function fetchVolunteersFromSheet(showNotification = false) {
       if (!googleAppScriptUrl || !navigator.onLine) return;
 
@@ -216,7 +214,7 @@
       let payload = {};
 
       if (activeSessions[currentPin]) {
-        // Check OUT
+        // --- UITCHECKEN ---
         const checkInTime = activeSessions[currentPin].checkInTime;
         delete activeSessions[currentPin];
         
@@ -232,7 +230,7 @@
         logs.push(payload);
         showStatus(`Dag ${name}! Uitgecheckt om ${timeStr}.`, true);
       } else {
-        // Check IN
+        // --- INCHECKEN ---
         activeSessions[currentPin] = { name: name, checkInTime: timeStr, date: dateStr };
         payload = {
           datum: dateStr,
@@ -247,6 +245,8 @@
 
       localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
       localStorage.setItem('kiosk_logs', JSON.stringify(logs));
+      
+      // Enkel dít specifieke signaal (één rij) versturen naar Google Sheets
       queueAndSend(payload);
 
       clearPin();
@@ -290,7 +290,6 @@
       processQueue();
     });
 
-    // Haal elke 5 minuten automatisch eventuele nieuwe PINs op
     setInterval(fetchVolunteersFromSheet, 300000);
     setInterval(processQueue, 15000);
 
