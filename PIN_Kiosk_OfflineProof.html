@@ -23,10 +23,11 @@
     .pin-display { background: #0f172a; border: 2px solid #38bdf8; border-radius: 10px; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 32px; letter-spacing: 12px; margin-bottom: 20px; color: #f8fafc; font-weight: bold; }
     
     .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .btn-num { background: #334155; border: none; color: white; font-size: 24px; font-weight: bold; padding: 18px 0; border-radius: 10px; cursor: pointer; }
+    .btn-num { background: #334155; border: none; color: white; font-size: 24px; font-weight: bold; padding: 18px 0; border-radius: 10px; cursor: pointer; touch-action: manipulation; }
     .btn-num:active { background: #475569; transform: scale(0.98); }
     .btn-clear { background: #ef4444; color: white; }
     .btn-enter { background: #10b981; color: white; grid-column: span 3; font-size: 20px; padding: 15px 0; margin-top: 5px; }
+    .btn-enter:disabled { background: #64748b; cursor: not-allowed; opacity: 0.6; }
 
     .status-box { margin-top: 15px; padding: 12px; border-radius: 8px; text-align: center; font-size: 15px; font-weight: 600; display: none; }
     .status-success { background: #065f46; color: #a7f3d0; border: 1px solid #059669; }
@@ -163,7 +164,9 @@
     }
 
     async function queueAndSend(data) {
-      // Controleer of exact dit verzoek al in de wachtrij staat om dubbelen te voorkomen
+      // Voeg een uniek ID toe om dubbelen in de wachtrij uit te sluiten
+      data.requestId = Date.now() + "_" + Math.random().toString(36).substr(2, 5);
+
       const isAlreadyInQueue = offlineQueue.some(item => 
         item.pin === data.pin && 
         item.actie === data.actie && 
@@ -181,4 +184,152 @@
 
     async function processQueue() {
       updateSyncBadge();
-      if (!googleAppScriptUrl || offlineQueue.length
+      if (!googleAppScriptUrl || offlineQueue.length === 0 || !navigator.onLine || isProcessingQueue) return;
+
+      isProcessingQueue = true;
+
+      // Pak het eerste element en haal het Meteen uit de wachtrij
+      let item = offlineQueue[0];
+      offlineQueue.shift();
+      localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
+
+      try {
+        await fetch(googleAppScriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        });
+      } catch (err) {
+        console.error("Netwerkfout bij synchroniseren, zet item terug in wachtrij:", err);
+        offlineQueue.unshift(item);
+        localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
+      } finally {
+        isProcessingQueue = false;
+        updateSyncBadge();
+
+        // Als er nog meer verzoeken klaarstaan, verwerk de volgende na een korte pauze
+        if (offlineQueue.length > 0 && navigator.onLine) {
+          setTimeout(processQueue, 500);
+        }
+      }
+    }
+
+    function submitPin() {
+      if (isSubmitting || !currentPin) return;
+      isSubmitting = true;
+
+      const submitBtn = document.getElementById('btnSubmit');
+      if (submitBtn) submitBtn.disabled = true;
+
+      const name = volunteers[currentPin];
+      if (!name) {
+        showStatus("Onbekende PIN-code. Probeer opnieuw.", false);
+        clearPin();
+        resetSubmitState();
+        return;
+      }
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
+      const dateStr = now.toLocaleDateString('nl-BE');
+
+      let payload = {};
+
+      if (activeSessions[currentPin]) {
+        // --- UITCHECKEN ---
+        const checkInTime = activeSessions[currentPin].checkInTime;
+        delete activeSessions[currentPin];
+        
+        payload = {
+          datum: dateStr,
+          pin: currentPin,
+          naam: name,
+          inchecktijd: checkInTime,
+          uitchecktijd: timeStr,
+          actie: "UITCHECK"
+        };
+
+        logs.push(payload);
+        showStatus(`Dag ${name}! Uitgecheckt om ${timeStr}.`, true);
+      } else {
+        // --- INCHECKEN ---
+        activeSessions[currentPin] = { name: name, checkInTime: timeStr, date: dateStr };
+        payload = {
+          datum: dateStr,
+          pin: currentPin,
+          naam: name,
+          inchecktijd: timeStr,
+          uitchecktijd: "",
+          actie: "INCHECK"
+        };
+        showStatus(`Welkom ${name}! Ingecheckt om ${timeStr}.`, true);
+      }
+
+      localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
+      localStorage.setItem('kiosk_logs', JSON.stringify(logs));
+      
+      queueAndSend(payload);
+
+      clearPin();
+      renderActiveList();
+
+      // 2 seconden cooldown voor de bevestigingsknop
+      setTimeout(() => {
+        resetSubmitState();
+      }, 2000);
+    }
+
+    function resetSubmitState() {
+      isSubmitting = false;
+      const submitBtn = document.getElementById('btnSubmit');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+
+    function renderActiveList() {
+      const listEl = document.getElementById('activeList');
+      const countEl = document.getElementById('activeCount');
+      listEl.innerHTML = '';
+
+      const pins = Object.keys(activeSessions);
+      countEl.innerText = pins.length;
+
+      if (pins.length === 0) {
+        listEl.innerHTML = '<li style="color:#64748b; text-align:center; padding:20px;">Geen vrijwilligers aanwezig</li>';
+        return;
+      }
+
+      pins.forEach(pin => {
+        const item = activeSessions[pin];
+        const li = document.createElement('li');
+        li.className = 'vol-item';
+        li.innerHTML = `<span class="name">${item.name}</span><span class="time">In om ${item.checkInTime}</span>`;
+        listEl.appendChild(li);
+      });
+    }
+
+    function configureScriptUrl() {
+      const url = prompt("Plak hier je Google Apps Script WebApp URL:", googleAppScriptUrl);
+      if (url !== null) {
+        googleAppScriptUrl = url.trim();
+        localStorage.setItem('kiosk_script_url', googleAppScriptUrl);
+        fetchVolunteersFromSheet(true);
+        processQueue();
+      }
+    }
+
+    window.addEventListener('online', () => {
+      fetchVolunteersFromSheet();
+      processQueue();
+    });
+
+    setInterval(fetchVolunteersFromSheet, 300000);
+    setInterval(processQueue, 15000);
+
+    renderActiveList();
+    updateSyncBadge();
+    fetchVolunteersFromSheet();
+    processQueue();
+  </script>
+</body>
+</html>
