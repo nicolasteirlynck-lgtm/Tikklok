@@ -88,14 +88,10 @@
   </div>
 
   <script>
-    const HARDCODED_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhrpRXyinc4q-9SdSm4KYUHg_jGLVwU3unAJfy9CyG1Ja_aZuEVHqzPGlW70xYzCt_/exec";
+    const HARDCODED_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH220S9kJ_I3ExnJ4Ajq4XWtb6peRnsaXSjpd1pWKXG8UddDp_aFfkYFT6eHVJVPXB/exec";
 
-    let googleAppScriptUrl = localStorage.getItem('kiosk_script_url') || HARDCODED_SCRIPT_URL;
-
-    if (HARDCODED_SCRIPT_URL) {
-      googleAppScriptUrl = HARDCODED_SCRIPT_URL;
-      localStorage.setItem('kiosk_script_url', HARDCODED_SCRIPT_URL);
-    }
+    let googleAppScriptUrl = HARDCODED_SCRIPT_URL;
+    localStorage.setItem('kiosk_script_url', HARDCODED_SCRIPT_URL);
 
     let defaultVols = {
       "1234": "Jan Peeters",
@@ -107,7 +103,7 @@
     let logs = JSON.parse(localStorage.getItem('kiosk_logs') || '[]');
     let offlineQueue = JSON.parse(localStorage.getItem('kiosk_offline_queue') || '[]');
     let currentPin = "";
-    let isSubmitting = false; // Beveiliging tegen dubbel klikken/triggers
+    let isSubmitting = false;
 
     async function fetchVolunteersFromSheet(showNotification = false) {
       if (!googleAppScriptUrl || !navigator.onLine) return;
@@ -199,7 +195,6 @@
     }
 
     function submitPin() {
-      // Voorkom dat de functie 2x achter elkaar getriggerd wordt
       if (isSubmitting || !currentPin) return;
       isSubmitting = true;
 
@@ -255,7 +250,6 @@
       clearPin();
       renderActiveList();
 
-      // Debounce opheffen na 1.5 seconde
       setTimeout(() => {
         isSubmitting = false;
       }, 1500);
