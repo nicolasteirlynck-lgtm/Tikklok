@@ -104,6 +104,7 @@
     let offlineQueue = JSON.parse(localStorage.getItem('kiosk_offline_queue') || '[]');
     let currentPin = "";
     let isSubmitting = false;
+    let isProcessingQueue = false;
 
     async function fetchVolunteersFromSheet(showNotification = false) {
       if (!googleAppScriptUrl || !navigator.onLine) return;
@@ -162,143 +163,22 @@
     }
 
     async function queueAndSend(data) {
-      offlineQueue.push(data);
-      localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
+      // Controleer of exact dit verzoek al in de wachtrij staat om dubbelen te voorkomen
+      const isAlreadyInQueue = offlineQueue.some(item => 
+        item.pin === data.pin && 
+        item.actie === data.actie && 
+        item.inchecktijd === data.inchecktijd && 
+        item.uitchecktijd === data.uitchecktijd
+      );
+
+      if (!isAlreadyInQueue) {
+        offlineQueue.push(data);
+        localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
+      }
+
       processQueue();
     }
 
     async function processQueue() {
       updateSyncBadge();
-      if (!googleAppScriptUrl || offlineQueue.length === 0 || !navigator.onLine) return;
-
-      let queueCopy = [...offlineQueue];
-
-      for (let i = 0; i < queueCopy.length; i++) {
-        let item = queueCopy[i];
-        try {
-          await fetch(googleAppScriptUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(item)
-          });
-          
-          offlineQueue.shift();
-          localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
-          updateSyncBadge();
-        } catch (err) {
-          console.error("Netwerkfout bij synchroniseren, pauzeer wachtrij:", err);
-          break;
-        }
-      }
-      updateSyncBadge();
-    }
-
-    function submitPin() {
-      if (isSubmitting || !currentPin) return;
-      isSubmitting = true;
-
-      const name = volunteers[currentPin];
-      if (!name) {
-        showStatus("Onbekende PIN-code. Probeer opnieuw.", false);
-        clearPin();
-        isSubmitting = false;
-        return;
-      }
-
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
-      const dateStr = now.toLocaleDateString('nl-BE');
-
-      let payload = {};
-
-      if (activeSessions[currentPin]) {
-        // --- UITCHECKEN ---
-        const checkInTime = activeSessions[currentPin].checkInTime;
-        delete activeSessions[currentPin];
-        
-        payload = {
-          datum: dateStr,
-          pin: currentPin,
-          naam: name,
-          inchecktijd: checkInTime,
-          uitchecktijd: timeStr,
-          actie: "UITCHECK"
-        };
-
-        logs.push(payload);
-        showStatus(`Dag ${name}! Uitgecheckt om ${timeStr}.`, true);
-      } else {
-        // --- INCHECKEN ---
-        activeSessions[currentPin] = { name: name, checkInTime: timeStr, date: dateStr };
-        payload = {
-          datum: dateStr,
-          pin: currentPin,
-          naam: name,
-          inchecktijd: timeStr,
-          uitchecktijd: "",
-          actie: "INCHECK"
-        };
-        showStatus(`Welkom ${name}! Ingecheckt om ${timeStr}.`, true);
-      }
-
-      localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
-      localStorage.setItem('kiosk_logs', JSON.stringify(logs));
-      
-      queueAndSend(payload);
-
-      clearPin();
-      renderActiveList();
-
-      setTimeout(() => {
-        isSubmitting = false;
-      }, 1500);
-    }
-
-    function renderActiveList() {
-      const listEl = document.getElementById('activeList');
-      const countEl = document.getElementById('activeCount');
-      listEl.innerHTML = '';
-
-      const pins = Object.keys(activeSessions);
-      countEl.innerText = pins.length;
-
-      if (pins.length === 0) {
-        listEl.innerHTML = '<li style="color:#64748b; text-align:center; padding:20px;">Geen vrijwilligers aanwezig</li>';
-        return;
-      }
-
-      pins.forEach(pin => {
-        const item = activeSessions[pin];
-        const li = document.createElement('li');
-        li.className = 'vol-item';
-        li.innerHTML = `<span class="name">${item.name}</span><span class="time">In om ${item.checkInTime}</span>`;
-        listEl.appendChild(li);
-      });
-    }
-
-    function configureScriptUrl() {
-      const url = prompt("Plak hier je Google Apps Script WebApp URL:", googleAppScriptUrl);
-      if (url !== null) {
-        googleAppScriptUrl = url.trim();
-        localStorage.setItem('kiosk_script_url', googleAppScriptUrl);
-        fetchVolunteersFromSheet(true);
-        processQueue();
-      }
-    }
-
-    window.addEventListener('online', () => {
-      fetchVolunteersFromSheet();
-      processQueue();
-    });
-
-    setInterval(fetchVolunteersFromSheet, 300000);
-    setInterval(processQueue, 15000);
-
-    renderActiveList();
-    updateSyncBadge();
-    fetchVolunteersFromSheet();
-    processQueue();
-  </script>
-</body>
-</html>
+      if (!googleAppScriptUrl || offlineQueue.length
