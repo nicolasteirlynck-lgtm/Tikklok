@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vrijwilligers PIN Kiosk (Cloud Sync & Live PINs)</title>
+  <title>Vrijwilligers PIN Kiosk (Cloud Sync & Auto-Uitcheck)</title>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
@@ -107,6 +107,23 @@
     let isSubmitting = false;
     let isProcessingQueue = false;
 
+    // Opschonen van oude/vergeten sessies van gisteren
+    function cleanupOldSessions() {
+      const todayStr = new Date().toLocaleDateString('nl-BE');
+      let changed = false;
+      
+      Object.keys(activeSessions).forEach(pin => {
+        if (activeSessions[pin].date !== todayStr) {
+          delete activeSessions[pin];
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
+      }
+    }
+
     async function fetchVolunteersFromSheet(showNotification = false) {
       if (!googleAppScriptUrl || !navigator.onLine) return;
 
@@ -164,7 +181,6 @@
     }
 
     async function queueAndSend(data) {
-      // Voeg een uniek ID toe om dubbelen in de wachtrij uit te sluiten
       data.requestId = Date.now() + "_" + Math.random().toString(36).substr(2, 5);
 
       const isAlreadyInQueue = offlineQueue.some(item => 
@@ -188,7 +204,6 @@
 
       isProcessingQueue = true;
 
-      // Pak het eerste element en haal het Meteen uit de wachtrij
       let item = offlineQueue[0];
       offlineQueue.shift();
       localStorage.setItem('kiosk_offline_queue', JSON.stringify(offlineQueue));
@@ -208,7 +223,6 @@
         isProcessingQueue = false;
         updateSyncBadge();
 
-        // Als er nog meer verzoeken klaarstaan, verwerk de volgende na een korte pauze
         if (offlineQueue.length > 0 && navigator.onLine) {
           setTimeout(processQueue, 500);
         }
@@ -230,6 +244,8 @@
         return;
       }
 
+      cleanupOldSessions(); // Controleer eerst of er een oude sessie van gisteren open staat
+
       const now = new Date();
       const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
       const dateStr = now.toLocaleDateString('nl-BE');
@@ -237,7 +253,7 @@
       let payload = {};
 
       if (activeSessions[currentPin]) {
-        // --- UITCHECKEN ---
+        // --- NORMALE UITCHECK (ZELFDE DAG) ---
         const checkInTime = activeSessions[currentPin].checkInTime;
         delete activeSessions[currentPin];
         
@@ -253,7 +269,7 @@
         logs.push(payload);
         showStatus(`Dag ${name}! Uitgecheckt om ${timeStr}.`, true);
       } else {
-        // --- INCHECKEN ---
+        // --- NIEUWE INCHECK ---
         activeSessions[currentPin] = { name: name, checkInTime: timeStr, date: dateStr };
         payload = {
           datum: dateStr,
@@ -274,7 +290,6 @@
       clearPin();
       renderActiveList();
 
-      // 2 seconden cooldown voor de bevestigingsknop
       setTimeout(() => {
         resetSubmitState();
       }, 2000);
@@ -287,6 +302,7 @@
     }
 
     function renderActiveList() {
+      cleanupOldSessions();
       const listEl = document.getElementById('activeList');
       const countEl = document.getElementById('activeCount');
       listEl.innerHTML = '';
@@ -326,6 +342,7 @@
     setInterval(fetchVolunteersFromSheet, 300000);
     setInterval(processQueue, 15000);
 
+    cleanupOldSessions();
     renderActiveList();
     updateSyncBadge();
     fetchVolunteersFromSheet();
