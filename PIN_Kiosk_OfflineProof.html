@@ -107,19 +107,20 @@
     let isSubmitting = false;
     let isProcessingQueue = false;
 
-    function cleanupOldSessions() {
-      const todayStr = new Date().toLocaleDateString('nl-BE');
-      let changed = false;
-      
-      Object.keys(activeSessions).forEach(pin => {
-        if (activeSessions[pin].date !== todayStr) {
-          delete activeSessions[pin];
-          changed = true;
+    async function syncActiveSessionsWithSheet() {
+      if (!googleAppScriptUrl || !navigator.onLine) return;
+      try {
+        const response = await fetch(`${googleAppScriptUrl}?action=getActive`);
+        if (response.ok) {
+          const cloudActive = await response.json();
+          if (cloudActive && typeof cloudActive === 'object') {
+            activeSessions = cloudActive;
+            localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
+            renderActiveList();
+          }
         }
-      });
-
-      if (changed) {
-        localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
+      } catch (err) {
+        console.error("Fout bij ophalen actieve sessies:", err);
       }
     }
 
@@ -138,6 +139,7 @@
             }
           }
         }
+        await syncActiveSessionsWithSheet();
       } catch (err) {
         console.error("Fout bij ophalen vrijwilligers uit Google Sheet:", err);
       }
@@ -243,8 +245,6 @@
         return;
       }
 
-      cleanupOldSessions();
-
       const now = new Date();
       const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
       const dateStr = now.toLocaleDateString('nl-BE');
@@ -299,7 +299,6 @@
     }
 
     function renderActiveList() {
-      cleanupOldSessions();
       const listEl = document.getElementById('activeList');
       const countEl = document.getElementById('activeCount');
       listEl.innerHTML = '';
@@ -336,10 +335,9 @@
       processQueue();
     });
 
-    setInterval(fetchVolunteersFromSheet, 300000);
+    setInterval(fetchVolunteersFromSheet, 60000); // Synchroniseert elke minuut met Google Sheet
     setInterval(processQueue, 15000);
 
-    cleanupOldSessions();
     renderActiveList();
     updateSyncBadge();
     fetchVolunteersFromSheet();
