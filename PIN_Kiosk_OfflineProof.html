@@ -107,7 +107,6 @@
     let isSubmitting = false;
     let isProcessingQueue = false;
 
-    // Opschonen van oude/vergeten sessies van gisteren
     function cleanupOldSessions() {
       const todayStr = new Date().toLocaleDateString('nl-BE');
       let changed = false;
@@ -244,7 +243,7 @@
         return;
       }
 
-      cleanupOldSessions(); // Controleer eerst of er een oude sessie van gisteren open staat
+      cleanupOldSessions();
 
       const now = new Date();
       const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
@@ -253,7 +252,6 @@
       let payload = {};
 
       if (activeSessions[currentPin]) {
-        // --- NORMALE UITCHECK (ZELFDE DAG) ---
         const checkInTime = activeSessions[currentPin].checkInTime;
         delete activeSessions[currentPin];
         
@@ -269,7 +267,6 @@
         logs.push(payload);
         showStatus(`Dag ${name}! Uitgecheckt om ${timeStr}.`, true);
       } else {
-        // --- NIEUWE INCHECK ---
         activeSessions[currentPin] = { name: name, checkInTime: timeStr, date: dateStr };
         payload = {
           datum: dateStr,
