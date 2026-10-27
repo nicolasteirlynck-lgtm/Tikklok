@@ -61,6 +61,14 @@
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
     .btn-cancel { background: #475569; border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .btn-send { background: #10b981; border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+
+    /* SPECIFIEKE STIJL VOOR BEVESTIGINGS POP-UP */
+    .confirm-details { background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #334155; margin: 15px 0; text-align: center; }
+    .confirm-name { font-size: 22px; font-weight: bold; color: #38bdf8; margin-bottom: 5px; }
+    .confirm-action { font-size: 18px; font-weight: 600; color: #f8fafc; }
+    .confirm-action.in { color: #10b981; }
+    .confirm-action.out { color: #f59e0b; }
+    .confirm-time { font-size: 14px; color: #94a3b8; margin-top: 5px; }
   </style>
 </head>
 <body>
@@ -108,6 +116,22 @@
     </div>
   </div>
 
+  <!-- POP-UP MODAL VOOR BEVESTIGING IN/UITCHECK -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-content">
+      <h3 id="confirmModalTitle">Bevestig actie</h3>
+      <div class="confirm-details">
+        <div class="confirm-name" id="confirmName">---</div>
+        <div class="confirm-action" id="confirmAction">---</div>
+        <div class="confirm-time" id="confirmTime">---</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="cancelCheckModal()">Annuleren</button>
+        <button class="btn-send" id="btnConfirmCheck" onclick="confirmCheckModal()">Ja, bevestigen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- POP-UP MODAL VOOR OPMERKINGEN -->
   <div class="modal-overlay" id="commentModal">
     <div class="modal-content">
@@ -148,6 +172,7 @@
     let currentPin = "";
     let isSubmitting = false;
     let isProcessingQueue = false;
+    let pendingCheckPayload = null; // Tijdelyke opslag voor bevestiging
 
     async function syncActiveSessionsWithSheet() {
       if (!googleAppScriptUrl || !navigator.onLine) return;
@@ -336,18 +361,14 @@
       }
     }
 
+    // VOORBEREIDEN EN OPENEN VAN DE BEVESTIGINGS POP-UP
     function submitPin() {
       if (isSubmitting || !currentPin) return;
-      isSubmitting = true;
-
-      const submitBtn = document.getElementById('btnSubmit');
-      if (submitBtn) submitBtn.disabled = true;
 
       const name = volunteers[currentPin];
       if (!name) {
         showStatus("Onbekende PIN-code. Probeer opnieuw.", false);
         clearPin();
-        resetSubmitState();
         return;
       }
 
@@ -355,47 +376,76 @@
       const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
       const dateStr = now.toLocaleDateString('nl-BE');
 
-      let payload = {};
+      let actionType = activeSessions[currentPin] ? "UITCHECK" : "INCHECK";
+      let checkInTime = activeSessions[currentPin] ? activeSessions[currentPin].checkInTime : timeStr;
 
-      if (activeSessions[currentPin]) {
-        const checkInTime = activeSessions[currentPin].checkInTime;
-        delete activeSessions[currentPin];
-        
-        payload = {
-          datum: dateStr,
-          pin: currentPin,
-          naam: name,
-          inchecktijd: checkInTime,
-          uitchecktijd: timeStr,
-          actie: "UITCHECK"
-        };
+      pendingCheckPayload = {
+        datum: dateStr,
+        pin: currentPin,
+        naam: name,
+        inchecktijd: checkInTime,
+        uitchecktijd: actionType === "UITCHECK" ? timeStr : "",
+        actie: actionType,
+        timeStr: timeStr
+      };
 
-        logs.push(payload);
-        showStatus(`Dag ${name}! Uitgecheckt om ${timeStr}.`, true);
+      // Vul gegevens in de pop-up
+      document.getElementById('confirmName').innerText = name;
+      const actionEl = document.getElementById('confirmAction');
+      
+      if (actionType === "INCHECK") {
+        document.getElementById('confirmModalTitle').innerText = "Inchecken Bevestigen";
+        actionEl.innerText = "➡️ INCHECKEN";
+        actionEl.className = "confirm-action in";
+        document.getElementById('confirmTime').innerText = `Tijdstip: ${timeStr} uur`;
       } else {
-        activeSessions[currentPin] = { name: name, checkInTime: timeStr, date: dateStr };
-        payload = {
-          datum: dateStr,
-          pin: currentPin,
-          naam: name,
-          inchecktijd: timeStr,
-          uitchecktijd: "",
-          actie: "INCHECK"
-        };
-        showStatus(`Welkom ${name}! Ingecheckt om ${timeStr}.`, true);
+        document.getElementById('confirmModalTitle').innerText = "Uitchecken Bevestigen";
+        actionEl.innerText = "⬅️ UITCHECKEN";
+        actionEl.className = "confirm-action out";
+        document.getElementById('confirmTime').innerText = `Ingecheckt om ${checkInTime} | Uit om ${timeStr}`;
+      }
+
+      document.getElementById('confirmModal').classList.add('active');
+    }
+
+    // DEFINITIEF VERWERKEN NA KEUZE 'JA, BEVESTIGEN'
+    function confirmCheckModal() {
+      if (!pendingCheckPayload || isSubmitting) return;
+      isSubmitting = true;
+
+      document.getElementById('confirmModal').classList.remove('active');
+      const submitBtn = document.getElementById('btnSubmit');
+      if (submitBtn) submitBtn.disabled = true;
+
+      const p = pendingCheckPayload;
+
+      if (p.actie === "UITCHECK") {
+        delete activeSessions[p.pin];
+        logs.push(p);
+        showStatus(`Dag ${p.naam}! Uitgecheckt om ${p.timeStr}.`, true);
+      } else {
+        activeSessions[p.pin] = { name: p.naam, checkInTime: p.timeStr, date: p.datum };
+        showStatus(`Welkom ${p.naam}! Ingecheckt om ${p.timeStr}.`, true);
       }
 
       localStorage.setItem('kiosk_active', JSON.stringify(activeSessions));
       localStorage.setItem('kiosk_logs', JSON.stringify(logs));
       
-      queueAndSend(payload);
+      queueAndSend(p);
 
       clearPin();
       renderActiveList();
+      pendingCheckPayload = null;
 
       setTimeout(() => {
         resetSubmitState();
       }, 2000);
+    }
+
+    function cancelCheckModal() {
+      document.getElementById('confirmModal').classList.remove('active');
+      pendingCheckPayload = null;
+      clearPin();
     }
 
     function resetSubmitState() {
