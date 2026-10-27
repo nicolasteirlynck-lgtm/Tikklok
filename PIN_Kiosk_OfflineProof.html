@@ -62,13 +62,17 @@
     .btn-cancel { background: #475569; border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .btn-send { background: #10b981; border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
 
-    /* SPECIFIEKE STIJL VOOR BEVESTIGINGS POP-UP */
+    /* SPECIFIEKE STIJL VOOR BEVESTIGINGS POP-UP & CHECKBOX */
     .confirm-details { background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #334155; margin: 15px 0; text-align: center; }
     .confirm-name { font-size: 22px; font-weight: bold; color: #38bdf8; margin-bottom: 5px; }
     .confirm-action { font-size: 18px; font-weight: 600; color: #f8fafc; }
     .confirm-action.in { color: #10b981; }
     .confirm-action.out { color: #f59e0b; }
     .confirm-time { font-size: 14px; color: #94a3b8; margin-top: 5px; }
+
+    .checkbox-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 15px; padding: 10px; background: #1e293b; border-radius: 8px; border: 1px solid #334155; cursor: pointer; }
+    .checkbox-container input { width: 20px; height: 20px; cursor: pointer; accent-color: #38bdf8; }
+    .checkbox-container label { font-size: 16px; font-weight: 600; color: #f8fafc; cursor: pointer; margin: 0; }
   </style>
 </head>
 <body>
@@ -124,6 +128,12 @@
         <div class="confirm-name" id="confirmName">---</div>
         <div class="confirm-action" id="confirmAction">---</div>
         <div class="confirm-time" id="confirmTime">---</div>
+        
+        <!-- VINKJE VOOR KASSAMEDEWERKER -->
+        <div class="checkbox-container">
+          <input type="checkbox" id="kassaCheckbox">
+          <label for="kassaCheckbox">Kassamedewerker?</label>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="cancelCheckModal()">Annuleren</button>
@@ -172,7 +182,7 @@
     let currentPin = "";
     let isSubmitting = false;
     let isProcessingQueue = false;
-    let pendingCheckPayload = null; // Tijdelyke opslag voor bevestiging
+    let pendingCheckPayload = null;
 
     async function syncActiveSessionsWithSheet() {
       if (!googleAppScriptUrl || !navigator.onLine) return;
@@ -361,7 +371,6 @@
       }
     }
 
-    // VOORBEREIDEN EN OPENEN VAN DE BEVESTIGINGS POP-UP
     function submitPin() {
       if (isSubmitting || !currentPin) return;
 
@@ -389,10 +398,12 @@
         timeStr: timeStr
       };
 
-      // Vul gegevens in de pop-up
       document.getElementById('confirmName').innerText = name;
       const actionEl = document.getElementById('confirmAction');
       
+      // Reset checkbox bij het openen van de modal
+      document.getElementById('kassaCheckbox').checked = false;
+
       if (actionType === "INCHECK") {
         document.getElementById('confirmModalTitle').innerText = "Inchecken Bevestigen";
         actionEl.innerText = "➡️ INCHECKEN";
@@ -408,10 +419,13 @@
       document.getElementById('confirmModal').classList.add('active');
     }
 
-    // DEFINITIEF VERWERKEN NA KEUZE 'JA, BEVESTIGEN'
     function confirmCheckModal() {
       if (!pendingCheckPayload || isSubmitting) return;
       isSubmitting = true;
+
+      // Haal de status van de checkbox op
+      const isKassa = document.getElementById('kassaCheckbox').checked ? "Ja" : "Nee";
+      pendingCheckPayload.kassamedewerker = isKassa;
 
       document.getElementById('confirmModal').classList.remove('active');
       const submitBtn = document.getElementById('btnSubmit');
@@ -491,7 +505,7 @@
       processQueue();
     });
 
-    setInterval(fetchVolunteersFromSheet, 60000); // Synchroniseert elke minuut met Google Sheet
+    setInterval(fetchVolunteersFromSheet, 60000);
     setInterval(processQueue, 15000);
 
     renderActiveList();
